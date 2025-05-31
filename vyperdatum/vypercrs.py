@@ -925,12 +925,10 @@ def build_valid_vert_crs(crs: pyproj_VerticalCRS, regions: [str], datum_data: ob
         for region in regions:
             if datum == 'ellipse':
                 new_pipeline = '[]'
-                valid_pipeline = True
             else:
                 geoid_name = datum_data.get_geoid_name(region)
                 new_pipeline = get_regional_pipeline('ellipse', datum, region, geoid_name)
-                valid_pipeline, new_pipeline = is_valid_regional_pipeline(new_pipeline)
-            if new_pipeline and valid_pipeline:
+            if new_pipeline:
                 new_crs.add_pipeline(new_pipeline, region)
         pipeline = new_crs.pipeline_string
         if datum == 'geoid':
@@ -1066,7 +1064,7 @@ def is_valid_regional_pipeline(pipeline: str) -> bool:
             prefix, grid = part.split('=')
             grid_list.append(grid)
     paths = pyproj.datadir.get_data_dir()
-    path_list = paths.split(';')
+    path_list = paths.split(os.pathsep)
 
     valid = False
     for grid in grid_list:
@@ -1087,8 +1085,6 @@ def is_valid_regional_pipeline(pipeline: str) -> bool:
                         pipeline = pipeline.replace(grid, cur_grid + valid_ext)  # replace the pipeline with the new extension
                         valid = True
                         break
-        if not valid:
-            break
     return valid, pipeline
 
 

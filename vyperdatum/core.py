@@ -125,33 +125,24 @@ class VyperCore:
         for region in self.datum_data.polygon_files:
             vector = ogr.Open(self.datum_data.polygon_files[region])
             layer_count = vector.GetLayerCount()
-            found = False
             for m in range(layer_count):
                 layer = vector.GetLayerByIndex(m)
                 feature_count = layer.GetFeatureCount()
                 for n in range(feature_count):
                     feature = layer.GetNextFeature()
                     try:
-                        feature_name = feature.GetField(0)
+                        feature_name = feature.GetField(1)
                     except AttributeError:
                         print('WARNING: Unable to read feature name from feature in layer in {}'.format(self.datum_data.polygon_files[region]))
                         continue
-                    if isinstance(feature_name, str):
-                        if feature_name[:15] == 'valid-transform':
-                            valid_vdatum_poly = feature.GetGeometryRef()
-                            if data_geometry.Intersect(valid_vdatum_poly):
-                                intersecting_regions.append(region)
-                                gframe = self.datum_data.get_geoid_frame(region)
-                                self._geoid_frame.append(gframe)
-                                found = True
+                    if feature_name[:15] == 'valid-transform':
+                        valid_vdatum_poly = feature.GetGeometryRef()
+                        if data_geometry.Intersect(valid_vdatum_poly):
+                            intersecting_regions.append(region)
+                            gframe = self.datum_data.get_geoid_frame(region)
+                            self._geoid_frame.append(gframe)
                     feature = None
                 layer = None
-            if not found and region in self.datum_data.extended_region:
-                feature = vector.GetLayerByIndex(0).GetFeature(0)
-                if data_geometry.Intersect(feature.GetGeometryRef()):
-                    intersecting_regions.append(region)
-                    gframe = self.datum_data.get_geoid_frame(region)
-                    self._geoid_frame.append(gframe)
             vector = None
         self._regions = intersecting_regions
         self.in_crs.update_regions(intersecting_regions)
@@ -240,10 +231,9 @@ class VyperCore:
         # - lat, lon - this appears to be valid when using CRS from epsg
         # use the always_xy option to force the transform to expect lon/lat order
         transformer = Transformer.from_crs(in_crs, out_crs, always_xy=True)
-
         if z is None:
             z = np.zeros_like(x)
-        x, y, z = transformer.transform(x, y, z)
+        x, y, z = transformer.transform(x, y, z, errcheck=True)
 
         return x, y, z
 
@@ -736,14 +726,7 @@ class DatumData:
                     self.extended_region_lookup[entry] = []
                     for region in other_regions:
                         valid_region = False
-                        valid_exts = ['.gpkg', '.shp', '.kml']
-                        polygon_file = [os.path.join(new_path,region,region + vext) for vext in valid_exts]
-                        polygon_file = [pf for pf in polygon_file if os.path.exists(pf)]
-                        if polygon_file:
-                            polygon_file = polygon_file[0]
-                        else:
-                            print(f'Unable to find polygon file for region {region} using one of these extensions: {valid_exts}')
-                            continue
+                        polygon_file = os.path.join(new_path,region,region + '.gpkg')
                         if os.path.exists(polygon_file):
                             config_path = os.path.join(new_path,region,region + '.config')
                             if os.path.exists(polygon_file):
@@ -757,11 +740,14 @@ class DatumData:
                             self.regions.append(region)
                             self.polygon_files[region] = polygon_file
                             self.extended_region[region] = new_region_info
-                            self.uncertainties[region] = {}
-                            for ky in new_region_info:
-                                if ky.startswith('uncertainty_'):
-                                    _, datumky = ky.split('_')
-                                    self.uncertainties[region][datumky] = new_region_info[ky]
+                            if 'uncertainty_tss' in new_region_info:
+                                self.uncertainties[region] = {'tss': new_region_info['uncertainty_tss'],
+                                                              'mhhw': new_region_info['uncertainty_mhhw'],
+                                                              'mhw': new_region_info['uncertainty_mhw'],
+                                                              'mlw': new_region_info['uncertainty_mlw'],
+                                                              'mllw': new_region_info['uncertainty_mllw'],
+                                                              'dtl': new_region_info['uncertainty_dtl'],
+                                                              'mtl': new_region_info['uncertainty_mtl']}
 
     def get_vdatum_version(self):
         """
